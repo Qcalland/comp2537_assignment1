@@ -45,28 +45,58 @@ app.use(
 
 app.use(mongoSanitizer({ replaceWith: "_" }));
 
-app.use("/", (req, res) => {
+app.get("/", (req, res) => {
   res.send(`<h1>Sign in to see content</h1>
         <a href='/login'>Login</a></br>
-        <a href='/signup'>Sign Up</a>
+        <a href='/signup'>Sign Up</a></br>
+        <a href='/logout'>Log Out</a>
         `);
 });
 
-app.use("/signup", (req, res) => {});
+app.use("/signup", (req, res) => {
+  res.send(`
+        <h1>Sign Up</h1>
+        <form action='/submitUser' method='post'>
+        <input name='username' type='text' placeholder='username'>
+        <input name='password' type='password' placeholder='password'>
+        <input name='email' type='email' placeholder='email address'>
+        <button>Sign Up</button>
+        </form>
+        `);
+});
 
 app.post("/submitUser", async (req, res) => {
   var username = req.body.username;
   var password = req.body.password;
+  var email = req.body.email;
 
   const schema = Joi.object({
     username: Joi.string().alphanum().max(20).required(),
     password: Joi.string().max(20).required(),
+    email: Joi.string().email().required(),
   });
 
-  const validationResult = schema.validate({ username, password });
+  const blank = Joi.object({
+    test: Joi.string().required(),
+  });
+
+  const usernameBlank = blank.validate({ username });
+  if (usernameBlank.error != null) {
+    res.redirect("/blank?blank=username");
+  }
+  const passwordBlank = blank.validate({ password });
+  if (passwordBlank.error != null) {
+    res.redirect("/blank?blank=password");
+  }
+  const emailBlank = blank.validate({ email });
+  if (emailBlank.error != null) {
+    res.redirect("/blank?blank=email");
+  }
+
+  const validationResult = schema.validate({ username, password, email });
   if (validationResult.error != null) {
     console.log(validationResult.error);
-    res.redirect("/createUser");
+    res.redirect("/signup");
     return;
   }
 
@@ -75,18 +105,112 @@ app.post("/submitUser", async (req, res) => {
   await userCollection.insertOne({
     username: username,
     password: hashedPassword,
+    email: email,
   });
   console.log("Inserted user");
 
   res.redirect("/login");
 });
 
-app.use("/login", (req, res) => {});
+app.get("/blank", (req, res) => {
+  let blank = req.query.blank;
 
-app.use("/content", (req, res) => {
+  res.send(
+    `
+        <h1>` +
+      blank +
+      ` was blank</h1>
+        <a href='/signup'>Retry</a>
+        `,
+  );
+});
+
+app.get("/login", (req, res) => {
+  res.send(`
+        <h1>Log In</h1>
+        <form action='/loggingin' method='post'>
+        <input name='email' type='email' placeholder='email address'>
+        <input name='password' type='password' placeholder='password'>
+        <button>Log In</button>
+        </form>
+        `);
+});
+
+app.post("/loggingin", async (req, res) => {
+  var email = req.body.email;
+  var password = req.body.password;
+
+  const schema = Joi.string().email().required();
+  const validationResult = schema.validate(email);
+  if (validationResult.error != null) {
+    console.log(validationResult.error);
+    res.redirect("/login");
+    return;
+  }
+
+  const result = await userCollection
+    .find({ email: email })
+    .project({ username: 1, password: 1, _id: 1 })
+    .toArray();
+
+  if (result.length != 1) {
+    console.log("user not found");
+    res.redirect("/login");
+    return;
+  }
+
+  if (await bcrypt.compare(password, result[0].password)) {
+    req.session.authenticated = true;
+    req.session.username = result[0].username;
+    req.session.cookie.maxAge = expireTime;
+
+    res.redirect("/members");
+    return;
+  } else {
+    res.redirect("/incorrect");
+    return;
+  }
+});
+
+app.get("/incorrect", (req, res) => {
+  res.send(`
+        <h1>Incorrect password</h1>
+        <a href='/login'>Retry</a>
+        `);
+});
+
+app.get("/logout", (req, res) => {
+  req.session.destroy();
+  res.redirect("/");
+});
+
+app.get("/members", (req, res) => {
   if (!req.session.authenticated) {
     res.redirect("/login");
   }
+
+  var randomnumber = Math.floor(Math.random() * 3) + 1;
+
+  var username = req.session.username;
+  var src;
+
+  if (randomnumber == 1) {
+    src = "/1.png";
+  } else if (randomnumber == 2) {
+    src = "/2.png";
+  } else if (randomnumber == 3) {
+    src = "/3.png";
+  }
+
+  res.send(
+    `
+        <h1>Hi ${username}</h1>
+        <img src='${src}'>
+        <form action='/logout' method='post'>
+        <button>Log Out</button>
+        </form>
+        `,
+  );
 });
 
 app.use(express.static(__dirname + "/public"));
