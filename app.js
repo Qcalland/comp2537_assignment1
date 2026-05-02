@@ -76,27 +76,10 @@ app.post("/submitUser", async (req, res) => {
     email: Joi.string().email().required(),
   });
 
-  const blank = Joi.object({
-    test: Joi.string().required(),
-  });
-
-  const usernameBlank = blank.validate({ username });
-  if (usernameBlank.error != null) {
-    res.redirect("/blank?blank=username");
-  }
-  const passwordBlank = blank.validate({ password });
-  if (passwordBlank.error != null) {
-    res.redirect("/blank?blank=password");
-  }
-  const emailBlank = blank.validate({ email });
-  if (emailBlank.error != null) {
-    res.redirect("/blank?blank=email");
-  }
-
   const validationResult = schema.validate({ username, password, email });
   if (validationResult.error != null) {
     console.log(validationResult.error);
-    res.redirect("/signup");
+    res.redirect("/loggingin");
     return;
   }
 
@@ -109,7 +92,11 @@ app.post("/submitUser", async (req, res) => {
   });
   console.log("Inserted user");
 
-  res.redirect("/login");
+  req.session.authenticated = true;
+  req.session.username = username;
+  req.session.cookie.maxAge = expireTime;
+
+  res.redirect("/members");
 });
 
 app.get("/blank", (req, res) => {
@@ -206,9 +193,7 @@ app.get("/members", (req, res) => {
     `
         <h1>Hi ${username}</h1>
         <img src='${src}'>
-        <form action='/logout' method='post'>
-        <button>Log Out</button>
-        </form>
+        <a href='logout'>Log Out</a>
         `,
   );
 });
